@@ -3,11 +3,12 @@ use std::io::{self, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::process;
 
-const BUILT_IN_COMMANDS: &[&str] = &["echo", "exit", "type"];
+const BUILT_IN_COMMANDS: &[&str] = &["exit", "echo", "type", "pwd"];
 enum Command {
     Exit,
     Echo { arg: String },
     Type { arg: String },
+    Pwd,
     ExecutableOrNotFound { bin: String, args: String },
 }
 
@@ -16,6 +17,10 @@ impl Command {
         let input = input.trim();
         if input == "exit" {
             return Self::Exit;
+        }
+
+        if input == "pwd" {
+            return Self::Pwd;
         }
 
         if input.starts_with("echo") {
@@ -78,6 +83,7 @@ fn main() {
                 }
                 println!("{}: not found", arg);
             }
+            Command::Pwd => println!("{}", env::current_dir().unwrap().display()),
             Command::ExecutableOrNotFound { bin, args } => match try_run_cmd(&bin, &args) {
                 Ok(mut child) => {
                     let _ = child.wait();
