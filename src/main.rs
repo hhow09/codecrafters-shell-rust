@@ -1,39 +1,59 @@
 #[allow(unused_imports)]
 use std::io::{self, Write};
 
-type Command = &'static str;
-const ECHO: Command = "echo";
-const EXIT: Command = "exit";
-const TYPE: Command = "type";
+const BUILT_IN_COMMANDS: &[&str] = &["echo", "exit", "type"];
+enum Command {
+    Exit,
+    Echo { arg: String },
+    Type { arg: String },
+    NotFound,
+}
 
-fn is_builtin(command: &str) -> bool {
-    matches!(command.trim(), ECHO | EXIT | TYPE)
+impl Command {
+    fn from_input(input: &str) -> Command {
+        let input = input.trim();
+        if input == "exit" {
+            return Self::Exit;
+        }
+
+        if input.starts_with("echo") {
+            let arg = input.strip_prefix("echo").unwrap();
+            return Self::Echo {
+                arg: arg.trim().to_string(),
+            };
+        }
+
+        if input.starts_with("type") {
+            let arg = input.strip_prefix("type").unwrap();
+            return Self::Type {
+                arg: arg.trim().to_string(),
+            };
+        }
+        return Self::NotFound;
+    }
 }
 
 fn main() {
     loop {
         print!("$ ");
         io::stdout().flush().unwrap();
-        let mut command = String::new();
+        let mut input = String::new();
         io::stdin()
-            .read_line(&mut command)
+            .read_line(&mut input)
             .expect("Failed to read line");
 
-        if command.trim() == EXIT {
-            return;
-        }
-        if command.starts_with(ECHO) {
-            let arg = command.strip_prefix(ECHO).unwrap();
-            println!("{}", arg.trim());
-        } else if command.starts_with(TYPE) {
-            let arg = command.strip_prefix(TYPE).unwrap();
-            if is_builtin(arg) {
-                println!("{} is a shell builtin", arg.trim());
-            } else {
-                println!("{}: not found", arg.trim())
+        let command = Command::from_input(&input);
+        match command {
+            Command::Exit => return,
+            Command::Echo { arg } => println!("{}", arg),
+            Command::Type { arg } => {
+                if BUILT_IN_COMMANDS.contains(&arg.as_str()) {
+                    println!("{} is a shell builtin", arg);
+                } else {
+                    println!("{}: not found", arg);
+                }
             }
-        } else {
-            println!("{}: command not found", command.trim())
+            Command::NotFound => println!("{}: command not found", input.trim()),
         }
     }
 }
