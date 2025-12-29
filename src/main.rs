@@ -1,6 +1,9 @@
 #[allow(unused_imports)]
 use std::io::{self, Write};
 
+const ECHO: &str = "echo";
+const EXIT: &str = "exit";
+
 fn main() {
     loop {
         print!("$ ");
@@ -9,9 +12,15 @@ fn main() {
         io::stdin()
             .read_line(&mut command)
             .expect("Failed to read line");
-        match command.trim() {
-            "exit" => return,
-            _ => println!("{}: command not found", command.trim()),
+
+        if command.trim() == EXIT {
+            return;
+        }
+        if command.starts_with(ECHO) {
+            let arg = command.strip_prefix(ECHO).unwrap();
+            println!("{}", arg.trim());
+        } else {
+            println!("{}: command not found", command.trim())
         }
     }
 }
