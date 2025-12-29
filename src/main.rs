@@ -1,12 +1,14 @@
 use std::env;
 use std::io::{self, Write};
 use std::os::unix::fs::PermissionsExt;
+use std::process;
+
 const BUILT_IN_COMMANDS: &[&str] = &["echo", "exit", "type"];
 enum Command {
     Exit,
     Echo { arg: String },
     Type { arg: String },
-    NotFound,
+    ExecutableOrNotFound { bin: String, args: String },
 }
 
 impl Command {
@@ -29,8 +31,18 @@ impl Command {
                 arg: arg.trim().to_string(),
             };
         }
-        return Self::NotFound;
+        let bin = input.split_whitespace().next().unwrap().to_string();
+        let args = input[bin.len()..].to_string();
+        return Self::ExecutableOrNotFound { bin, args };
     }
+}
+
+fn try_run_cmd(bin: &str, args: &str) -> std::io::Result<process::Child> {
+    let mut cmd = process::Command::new(bin);
+    if !args.is_empty() {
+        cmd.args(args.split_whitespace());
+    }
+    cmd.spawn()
 }
 
 fn main() {
@@ -66,7 +78,12 @@ fn main() {
                 }
                 println!("{}: not found", arg);
             }
-            Command::NotFound => println!("{}: command not found", input.trim()),
+            Command::ExecutableOrNotFound { bin, args } => match try_run_cmd(&bin, &args) {
+                Ok(mut child) => {
+                    let _ = child.wait();
+                }
+                Err(e) => println!("{}: command not found", input.trim()),
+            },
         }
     }
 }
