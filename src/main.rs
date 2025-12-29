@@ -9,6 +9,7 @@ enum Command {
     Echo { arg: String },
     Type { arg: String },
     Pwd,
+    Cd { arg: String },
     ExecutableOrNotFound { bin: String, args: String },
 }
 
@@ -33,6 +34,12 @@ impl Command {
         if input.starts_with("type") {
             let arg = input.strip_prefix("type").unwrap();
             return Self::Type {
+                arg: arg.trim().to_string(),
+            };
+        }
+        if input.starts_with("cd") {
+            let arg = input.strip_prefix("cd").unwrap();
+            return Self::Cd {
                 arg: arg.trim().to_string(),
             };
         }
@@ -84,11 +91,20 @@ fn main() {
                 println!("{}: not found", arg);
             }
             Command::Pwd => println!("{}", env::current_dir().unwrap().display()),
+            Command::Cd { arg } => {
+                let path = env::current_dir().unwrap();
+                let new_path = path.join(&arg);
+                if new_path.exists() && new_path.is_dir() {
+                    env::set_current_dir(&new_path).unwrap();
+                } else {
+                    println!("{}: No such file or directory", arg);
+                }
+            }
             Command::ExecutableOrNotFound { bin, args } => match try_run_cmd(&bin, &args) {
                 Ok(mut child) => {
                     let _ = child.wait();
                 }
-                Err(e) => println!("{}: command not found", input.trim()),
+                Err(_e) => println!("{}: command not found", input.trim()),
             },
         }
     }
