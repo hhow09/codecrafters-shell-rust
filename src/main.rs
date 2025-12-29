@@ -1,6 +1,6 @@
-#[allow(unused_imports)]
+use std::env;
 use std::io::{self, Write};
-
+use std::os::unix::fs::PermissionsExt;
 const BUILT_IN_COMMANDS: &[&str] = &["echo", "exit", "type"];
 enum Command {
     Exit,
@@ -34,7 +34,7 @@ impl Command {
 }
 
 fn main() {
-    loop {
+    'repl: loop {
         print!("$ ");
         io::stdout().flush().unwrap();
         let mut input = String::new();
@@ -49,9 +49,22 @@ fn main() {
             Command::Type { arg } => {
                 if BUILT_IN_COMMANDS.contains(&arg.as_str()) {
                     println!("{} is a shell builtin", arg);
-                } else {
-                    println!("{}: not found", arg);
+                    continue 'repl;
                 }
+
+                let path_env = env::var_os("PATH");
+                if let Some(paths) = path_env {
+                    for folder in env::split_paths(&paths) {
+                        let full_path = folder.join(&arg);
+                        if full_path.exists() && full_path.is_file() {
+                            if full_path.metadata().unwrap().permissions().mode() & 0o111 != 0 {
+                                println!("{} is {}", arg, full_path.display());
+                                continue 'repl;
+                            }
+                        }
+                    }
+                }
+                println!("{}: not found", arg);
             }
             Command::NotFound => println!("{}: command not found", input.trim()),
         }
