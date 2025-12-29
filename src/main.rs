@@ -9,6 +9,9 @@ fn main() {
         io::stdin()
             .read_line(&mut command)
             .expect("Failed to read line");
-        println!("{}: command not found", command.trim());
+        match command.trim() {
+            "exit" => return,
+            _ => println!("{}: command not found", command.trim()),
+        }
     }
 }
