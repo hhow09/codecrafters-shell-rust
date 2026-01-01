@@ -92,6 +92,15 @@ fn main() {
             }
             Command::Pwd => println!("{}", env::current_dir().unwrap().display()),
             Command::Cd { arg } => {
+                if arg == "~" {
+                    let home_dir = env::var("HOME").unwrap();
+                    if home_dir == "" {
+                        println!("cd: HOME not set");
+                        continue 'repl;
+                    }
+                    env::set_current_dir(&home_dir).unwrap();
+                    continue 'repl;
+                }
                 let path = env::current_dir().unwrap();
                 let new_path = path.join(&arg);
                 if new_path.exists() && new_path.is_dir() {
