@@ -2,57 +2,15 @@ use std::env;
 use std::io::{self, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::process;
+mod command;
+use command::Command;
 
 const BUILT_IN_COMMANDS: &[&str] = &["exit", "echo", "type", "pwd"];
-enum Command {
-    Exit,
-    Echo { arg: String },
-    Type { arg: String },
-    Pwd,
-    Cd { arg: String },
-    ExecutableOrNotFound { bin: String, args: String },
-}
 
-impl Command {
-    fn from_input(input: &str) -> Command {
-        let input = input.trim();
-        if input == "exit" {
-            return Self::Exit;
-        }
-
-        if input == "pwd" {
-            return Self::Pwd;
-        }
-
-        if input.starts_with("echo") {
-            let arg = input.strip_prefix("echo").unwrap();
-            return Self::Echo {
-                arg: arg.trim().to_string(),
-            };
-        }
-
-        if input.starts_with("type") {
-            let arg = input.strip_prefix("type").unwrap();
-            return Self::Type {
-                arg: arg.trim().to_string(),
-            };
-        }
-        if input.starts_with("cd") {
-            let arg = input.strip_prefix("cd").unwrap();
-            return Self::Cd {
-                arg: arg.trim().to_string(),
-            };
-        }
-        let bin = input.split_whitespace().next().unwrap().to_string();
-        let args = input[bin.len()..].to_string();
-        return Self::ExecutableOrNotFound { bin, args };
-    }
-}
-
-fn try_run_cmd(bin: &str, args: &str) -> std::io::Result<process::Child> {
+fn try_run_cmd(bin: &str, args: &Vec<String>) -> std::io::Result<process::Child> {
     let mut cmd = process::Command::new(bin);
     if !args.is_empty() {
-        cmd.args(args.split_whitespace());
+        cmd.args(args);
     }
     cmd.spawn()
 }
@@ -69,29 +27,31 @@ fn main() {
         let command = Command::from_input(&input);
         match command {
             Command::Exit => return,
-            Command::Echo { arg } => println!("{}", arg),
-            Command::Type { arg } => {
-                if BUILT_IN_COMMANDS.contains(&arg.as_str()) {
-                    println!("{} is a shell builtin", arg);
+            Command::Echo { args } => println!("{}", args.join(" ")),
+            Command::Type { args } => {
+                let cmd = args[0].as_str();
+                if BUILT_IN_COMMANDS.contains(&cmd) {
+                    println!("{} is a shell builtin", cmd);
                     continue 'repl;
                 }
 
                 let path_env = env::var_os("PATH");
                 if let Some(paths) = path_env {
                     for folder in env::split_paths(&paths) {
-                        let full_path = folder.join(&arg);
+                        let full_path = folder.join(&cmd);
                         if full_path.exists() && full_path.is_file() {
                             if full_path.metadata().unwrap().permissions().mode() & 0o111 != 0 {
-                                println!("{} is {}", arg, full_path.display());
+                                println!("{} is {}", cmd, full_path.display());
                                 continue 'repl;
                             }
                         }
                     }
                 }
-                println!("{}: not found", arg);
+                println!("{}: not found", cmd);
             }
             Command::Pwd => println!("{}", env::current_dir().unwrap().display()),
-            Command::Cd { arg } => {
+            Command::Cd { args } => {
+                let arg = args[0].as_str();
                 if arg == "~" {
                     let home_dir = env::var("HOME").unwrap();
                     if home_dir == "" {
