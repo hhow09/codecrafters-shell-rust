@@ -2,7 +2,7 @@ use crate::const_vals::*;
 use std::io;
 use std::io::Error;
 
-#[derive(Copy, Clone, Eq, PartialEq)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
 enum ParseMode {
     SingleQuote,
     DoubleQuote,
@@ -59,25 +59,72 @@ impl Command {
         let mut args = Vec::new();
         let mut current_arg = String::new();
         let mut mode: ParseMode = ParseMode::None;
+        let mut escaping = false;
 
         for ch in args_raw.chars() {
             match ch {
                 SINGLE_QUOTE => match mode {
-                    ParseMode::SingleQuote => mode = ParseMode::None,
-                    ParseMode::None => mode = ParseMode::SingleQuote,
+                    ParseMode::SingleQuote => match escaping {
+                        true => {
+                            current_arg.push(ch);
+                            escaping = false;
+                        }
+                        false => {
+                            mode = ParseMode::None;
+                        }
+                    },
+                    ParseMode::None => match escaping {
+                        true => {
+                            current_arg.push(ch);
+                            escaping = false;
+                        }
+                        false => {
+                            mode = ParseMode::SingleQuote;
+                        }
+                    },
                     _ => current_arg.push(ch),
                 },
                 DOUBLE_QUOTE => match mode {
-                    ParseMode::DoubleQuote => mode = ParseMode::None,
-                    _ => mode = ParseMode::DoubleQuote,
+                    ParseMode::DoubleQuote => {
+                        if !escaping {
+                            mode = ParseMode::None;
+                        } else {
+                            current_arg.push(ch);
+                            escaping = false;
+                        }
+                    }
+                    ParseMode::None => {
+                        if !escaping {
+                            mode = ParseMode::DoubleQuote;
+                        } else {
+                            current_arg.push(ch);
+                            escaping = false;
+                        }
+                    }
+                    _ => current_arg.push(ch),
+                },
+                ESCAPE => match mode {
+                    // escape only works in None mode
+                    ParseMode::None => match escaping {
+                        true => {
+                            current_arg.push(ch);
+                            escaping = false;
+                        }
+                        false => escaping = true,
+                    },
+                    _ => current_arg.push(ch),
                 },
                 _ => {
-                    if ch.is_whitespace() && mode == ParseMode::None {
+                    // if not in quote, not escaping, and whitespace, then is a new arg
+                    if ch.is_whitespace() && mode == ParseMode::None && !escaping {
                         if !current_arg.is_empty() {
                             args.push(std::mem::take(&mut current_arg));
                         }
                     } else {
                         current_arg.push(ch);
+                    }
+                    if escaping {
+                        escaping = false;
                     }
                 }
             }
@@ -187,6 +234,70 @@ mod tests {
             Command::Echo {
                 args: expected_args
             }
+        );
+    }
+
+    #[test]
+    fn test_parse_args_with_escaping() {
+        let input = "echo world\\ \\ \\ \\ \\ \\ script";
+        let command = Command::from_input(input);
+
+        let expected_args = vec!["world      script".to_string()];
+
+        assert_eq!(
+            command,
+            Command::Echo {
+                args: expected_args
+            },
+            "should keep whitespace"
+        );
+    }
+
+    #[test]
+    fn test_parse_args_with_escaping_backslash() {
+        let input = "echo hello\\\\world";
+        let command = Command::from_input(input);
+
+        let expected_args = vec!["hello\\world".to_string()];
+
+        assert_eq!(
+            command,
+            Command::Echo {
+                args: expected_args
+            },
+            "should keep backslashes"
+        );
+    }
+
+    #[test]
+    fn test_parse_args_with_backslash_n() {
+        let input = "echo test\\nexample";
+        let command = Command::from_input(input);
+
+        let expected_args = vec!["testnexample".to_string()];
+
+        assert_eq!(
+            command,
+            Command::Echo {
+                args: expected_args
+            },
+            "should remove backslashes"
+        );
+    }
+
+    #[test]
+    fn test_parse_args_with_newline() {
+        let input = "echo 'test\nexample'";
+        let command = Command::from_input(input);
+
+        let expected_args = vec!["test\nexample".to_string()];
+
+        assert_eq!(
+            command,
+            Command::Echo {
+                args: expected_args
+            },
+            "should preserve newlines in single quotes"
         );
     }
 }
