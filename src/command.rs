@@ -82,7 +82,17 @@ impl Command {
                             mode = ParseMode::SingleQuote;
                         }
                     },
-                    _ => current_arg.push(ch),
+                    ParseMode::DoubleQuote => match escaping {
+                        true => {
+                            // Within double quotes, a backslash only escapes certain special characters: ", \, $, `, and newline
+                            // For all other characters, the backslash is treated literally. (here)
+                            current_arg.push_str(format!("\\{}", ch).as_str());
+                            escaping = false;
+                        }
+                        false => {
+                            current_arg.push(ch);
+                        }
+                    },
                 },
                 DOUBLE_QUOTE => match mode {
                     ParseMode::DoubleQuote => {
@@ -104,8 +114,7 @@ impl Command {
                     _ => current_arg.push(ch),
                 },
                 ESCAPE => match mode {
-                    // escape only works in None mode
-                    ParseMode::None => match escaping {
+                    ParseMode::None | ParseMode::DoubleQuote => match escaping {
                         true => {
                             current_arg.push(ch);
                             escaping = false;
@@ -120,6 +129,11 @@ impl Command {
                         if !current_arg.is_empty() {
                             args.push(std::mem::take(&mut current_arg));
                         }
+                    }
+                    // Within double quotes, a backslash only escapes certain special characters: ", \, $, `, and newline
+                    // For all other characters, the backslash is treated literally. (here)
+                    else if mode == ParseMode::DoubleQuote && escaping {
+                        current_arg.push_str(format!("\\{}", ch).as_str());
                     } else {
                         current_arg.push(ch);
                     }
@@ -298,6 +312,22 @@ mod tests {
                 args: expected_args
             },
             "should preserve newlines in single quotes"
+        );
+    }
+
+    #[test]
+    fn test_parse_args_backslash_in_double_quotes() {
+        let input = "echo \"shell'test'\'script\"";
+        let command = Command::from_input(input);
+
+        let expected_args = vec!["shell'test''script".to_string()];
+
+        assert_eq!(
+            command,
+            Command::Echo {
+                args: expected_args
+            },
+            "should preserve newlines in double quotes"
         );
     }
 }
