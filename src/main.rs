@@ -1,9 +1,8 @@
+use codecrafters_shell::command::Command;
 use std::env;
 use std::io::{self, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::process;
-mod command;
-use command::Command;
 
 const BUILT_IN_COMMANDS: &[&str] = &["exit", "echo", "type", "pwd"];
 

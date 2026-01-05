@@ -1,3 +1,14 @@
+use crate::const_vals::*;
+use std::io;
+use std::io::Error;
+
+#[derive(Copy, Clone, Eq, PartialEq)]
+enum ParseMode {
+    SingleQuote,
+    DoubleQuote,
+    None,
+}
+
 #[derive(Debug, PartialEq)]
 pub enum Command {
     Exit,
@@ -21,60 +32,63 @@ impl Command {
 
         if input.starts_with("echo ") {
             let arg = input.strip_prefix("echo ").unwrap();
-            let args = Self::parse_args(arg);
+            let args = Self::parse_args(arg).unwrap();
             return Self::Echo { args };
         }
 
         if input.starts_with("type ") {
             let arg = input.strip_prefix("type ").unwrap();
-            let args = Self::parse_args(arg);
+            let args = Self::parse_args(arg).unwrap();
             return Self::Type { args };
         }
         if input.starts_with("cd ") {
             let arg = input.strip_prefix("cd").unwrap();
-            let args = Self::parse_args(arg);
+            let args = Self::parse_args(arg).unwrap();
             return Self::Cd { args };
         }
         let bin = input.split(' ').next().unwrap().to_string();
-        let args = Self::parse_args(&input[bin.len()..]);
+        let args = Self::parse_args(&input[bin.len()..]).unwrap();
         return Self::ExecutableOrNotFound { bin, args };
     }
 
-    fn parse_args(args_raw: &str) -> Vec<String> {
+    fn parse_args(args_raw: &str) -> Result<Vec<String>, Error> {
+        Self::parse_args_handle_quote(args_raw)
+    }
+
+    fn parse_args_handle_quote(args_raw: &str) -> Result<Vec<String>, Error> {
         let mut args = Vec::new();
         let mut current_arg = String::new();
-        let mut in_single_quote = false;
-        let mut in_arg = false;
+        let mut mode: ParseMode = ParseMode::None;
 
-        for c in args_raw.chars() {
-            if in_single_quote {
-                if c == '\'' {
-                    in_single_quote = false;
-                } else {
-                    current_arg.push(c);
-                }
-            } else {
-                if c == '\'' {
-                    in_single_quote = true;
-                    in_arg = true;
-                } else if c.is_whitespace() {
-                    if in_arg {
-                        args.push(current_arg.clone());
-                        current_arg.clear();
-                        in_arg = false;
+        for ch in args_raw.chars() {
+            match ch {
+                SINGLE_QUOTE => match mode {
+                    ParseMode::SingleQuote => mode = ParseMode::None,
+                    ParseMode::None => mode = ParseMode::SingleQuote,
+                    _ => current_arg.push(ch),
+                },
+                DOUBLE_QUOTE => match mode {
+                    ParseMode::DoubleQuote => mode = ParseMode::None,
+                    _ => mode = ParseMode::DoubleQuote,
+                },
+                _ => {
+                    if ch.is_whitespace() && mode == ParseMode::None {
+                        if !current_arg.is_empty() {
+                            args.push(std::mem::take(&mut current_arg));
+                        }
+                    } else {
+                        current_arg.push(ch);
                     }
-                } else {
-                    current_arg.push(c);
-                    in_arg = true;
                 }
             }
         }
-
-        if in_arg {
-            args.push(current_arg);
+        if !current_arg.is_empty() && mode != ParseMode::None {
+            return Err(Error::new(io::ErrorKind::InvalidData, "Invalid input"));
         }
-
-        args
+        if !current_arg.is_empty() {
+            args.push(std::mem::take(&mut current_arg));
+        }
+        Ok(args)
     }
 }
 
@@ -137,6 +151,36 @@ mod tests {
         let command = Command::from_input(input);
 
         let expected_args = vec!["ab".to_string()];
+
+        assert_eq!(
+            command,
+            Command::Echo {
+                args: expected_args
+            }
+        );
+    }
+
+    #[test]
+    fn test_echo_with_double_quotes() {
+        let input = "echo \"quz  hello\" \"bar\"";
+        let command = Command::from_input(input);
+
+        let expected_args = vec!["quz  hello".to_string(), "bar".to_string()];
+
+        assert_eq!(
+            command,
+            Command::Echo {
+                args: expected_args
+            }
+        );
+    }
+
+    #[test]
+    fn test_echo_double_quotes_wrapping_single_quotes() {
+        let input = "echo \"shell's test\"";
+        let command = Command::from_input(input);
+
+        let expected_args = vec!["shell's test".to_string()];
 
         assert_eq!(
             command,
